@@ -1,8 +1,9 @@
 """HTTP API over the GraphRAG v3 query engine.
 
-    GET  /health   -> is the index loaded?
-    POST /query    -> {"query": "...", "method": "local|global|drift|basic"}
-    POST /reload   -> re-download the index after a re-index
+    GET  /health        -> is the index loaded?
+    POST /query         -> {"query": "...", "method": "local|global|drift|basic"}
+    POST /reload        -> re-download the index after a re-index
+    GET  /tables/{name} -> an index table as JSON (for scripts/inspect.py)
 
 Every endpoint except /health requires the `X-API-Key` header, so strangers
 can't spend your Azure OpenAI tokens.
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 import graphrag.api as api
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from graphrag.config.load_config import load_config
 from graphrag.data_model.data_reader import DataReader
 from graphrag_storage import create_storage
@@ -114,6 +115,15 @@ async def query(req: QueryRequest):
     else:
         response, _ = await api.basic_search(**common, text_units=t["text_units"])
     return {"method": req.method, "response": response}
+
+
+@app.get("/tables/{name}", dependencies=[Depends(require_key)])
+def table(name: Literal["entities", "relationships", "communities", "community_reports", "text_units"], limit: int = 1000):
+    """Return an index table exactly as GraphRAG wrote it (parquet -> JSON records)."""
+    if state["tables"] is None:
+        raise HTTPException(status_code=503, detail=f"index not ready: {state['error']}")
+    df = state["tables"][name].head(limit)
+    return Response(content=df.to_json(orient="records", default_handler=str), media_type="application/json")
 
 
 @app.post("/reload", dependencies=[Depends(require_key)])
