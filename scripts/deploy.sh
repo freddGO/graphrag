@@ -45,7 +45,7 @@ SERVER="$(output registryServer)"
 TAG="$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
 
 echo "==> 2/4 building image $SERVER/graphrag:$TAG in Azure (no local Docker needed)"
-az acr build -r "$REGISTRY" -t "graphrag:$TAG" . -o none
+az acr build -g "$RG" -r "$REGISTRY" -t "graphrag:$TAG" . -o none  # -g: ignore any `az config` default group
 
 echo "==> 3/4 pointing the API and indexer job at the new image"
 az deployment group create -g "$RG" -n main -f infra/main.bicep \
