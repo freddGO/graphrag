@@ -1,0 +1,3 @@
+Northwind Robotics was founded in 2019 by Maya Chen and Tomas Reyes in the coastal town of Port Avery. The company builds small underwater drones that inspect piers, pilings and ship hulls. Maya Chen designed the sonar navigation system, while Tomas Reyes ran sales and operations.
+
+In 2021 Northwind Robotics raised its first round of funding from Bluefin Capital, a venture fund that specializes in ocean technology. The investment was led by Priya Nair, a partner at Bluefin Capital, who also joined the Northwind board of directors.

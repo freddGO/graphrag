@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+project/output/
+project/cache/
+project/logs/
+.env
+.deploy.env

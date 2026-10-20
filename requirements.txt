@@ -1,0 +1,5 @@
+graphrag==3.3.0
+fastapi>=0.115
+uvicorn>=0.32
+azure-identity>=1.25
+azure-storage-blob>=12.30
