@@ -1,6 +1,8 @@
 ### GraphRAG v3.3.0 configuration.
 ### Based on the `graphrag init` template, pointed at Azure OpenAI with managed identity
-### (no API keys). Values in ${...} come from environment variables set by infra/main.bicep.
+### (no API keys). The dollar-brace placeholders below are environment variables set by
+### infra/main.bicep. GraphRAG substitutes them across the WHOLE file, comments included,
+### so never write a dollar sign in a comment here.
 ### Full reference: https://microsoft.github.io/graphrag/config/yaml/
 
 ### LLM settings ###

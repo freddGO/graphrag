@@ -32,9 +32,11 @@ output() { az deployment group show -g "$RG" -n main --query "properties.outputs
 
 echo "==> 1/4 resource group + infrastructure (placeholder image)"
 az group create -n "$RG" -l "$LOCATION" -o none
-if az containerapp show -g "$RG" -n ca-graphrag-api -o none 2>/dev/null; then
-  # Already deployed: keep the current image so a re-run doesn't swap in the placeholder.
-  IMAGE="$(az containerapp show -g "$RG" -n ca-graphrag-api --query 'properties.template.containers[0].image' -o tsv)"
+# Already deployed? Keep the current image so a re-run doesn't swap in the placeholder.
+# (az resource is core CLI; az containerapp needs an extension that may not install.)
+IMAGE="$(az resource show -g "$RG" -n ca-graphrag-api --resource-type Microsoft.App/containerApps \
+  --query 'properties.template.containers[0].image' -o tsv 2>/dev/null || true)"
+if [ -n "$IMAGE" ]; then
   az deployment group create -g "$RG" -n main -f infra/main.bicep -p apiKey="$API_KEY" image="$IMAGE" -o none
 else
   az deployment group create -g "$RG" -n main -f infra/main.bicep -p apiKey="$API_KEY" -o none
