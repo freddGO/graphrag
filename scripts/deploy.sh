@@ -12,7 +12,6 @@ cd "$(dirname "$0")/.."
 RG="${RG:-rg-graphrag}"
 LOCATION="${LOCATION:-eastus2}"
 export MSYS_NO_PATHCONV=1  # Git Bash: don't rewrite /subscriptions/... into Windows paths
-export PYTHONIOENCODING=utf-8  # Windows az CLI crashes printing pip's progress bars from acr build logs
 az config set extension.use_dynamic_install=yes_without_prompt -o none 2>/dev/null  # containerapp extension
 
 echo "==> 0/4 registering resource providers (first run on a new subscription takes a minute)"
@@ -46,7 +45,24 @@ SERVER="$(output registryServer)"
 TAG="$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
 
 echo "==> 2/4 building image $SERVER/graphrag:$TAG in Azure (no local Docker needed)"
-az acr build -g "$RG" -r "$REGISTRY" -t "graphrag:$TAG" . -o none  # -g: ignore any `az config` default group
+# Queue the build without streaming logs: on Windows, az crashes printing non-ASCII
+# build output. Poll instead, and on failure fetch the raw log over REST.
+# (-g everywhere: ignore any default group set with `az config`.)
+RUN_ID="$(az acr build -g "$RG" -r "$REGISTRY" -t "graphrag:$TAG" . --no-logs --query runId -o tsv)"
+while :; do
+  STATUS="$(az acr task show-run -g "$RG" -r "$REGISTRY" --run-id "$RUN_ID" --query status -o tsv)"
+  case "$STATUS" in
+    Succeeded) echo "build $RUN_ID succeeded"; break ;;
+    Queued|Started|Running) echo "  $(date +%H:%M:%S) build $RUN_ID $STATUS"; sleep 20 ;;
+    *)
+      echo "build $RUN_ID $STATUS - log:"
+      SUB="$(az account show --query id -o tsv)"
+      LOG_URL="$(az rest --method post --query logLink -o tsv --url \
+        "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ContainerRegistry/registries/$REGISTRY/runs/$RUN_ID/listLogSasUrl?api-version=2019-06-01-preview")"
+      curl -fsS "$LOG_URL" | tail -40
+      exit 1 ;;
+  esac
+done
 
 echo "==> 3/4 pointing the API and indexer job at the new image"
 az deployment group create -g "$RG" -n main -f infra/main.bicep \
