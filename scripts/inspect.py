@@ -72,8 +72,8 @@ if "communities" in SECTIONS:
 if "reports" in SECTIONS:
     reports = fetch("community_reports")
     heading(f"COMMUNITY REPORTS ({len(reports)})")
-    for r in sorted(reports, key=lambda r: -float(r.get("rating") or 0)):
-        print(f"\n  community {r['community']}: {r['title']}   rating={r.get('rating')}")
+    for r in sorted(reports, key=lambda r: -float(r.get("rank") or 0)):
+        print(f"\n  community {r['community']}: {r['title']}   rank={r.get("rank")}/10")
         print(wrap(r.get("summary")))
         if r.get("rating_explanation"):
             print(wrap(f"Why this rating: {r['rating_explanation']}"))
