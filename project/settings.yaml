@@ -10,10 +10,10 @@
 completion_models:
   default_completion_model:
     model_provider: azure
-    model: ${GRAPHRAG_CHAT_MODEL}
-    azure_deployment_name: ${GRAPHRAG_CHAT_DEPLOYMENT}
-    api_base: ${AZURE_OPENAI_ENDPOINT}
-    api_version: ${AZURE_OPENAI_API_VERSION}
+    model: "${GRAPHRAG_CHAT_MODEL}"
+    azure_deployment_name: "${GRAPHRAG_CHAT_DEPLOYMENT}"
+    api_base: "${AZURE_OPENAI_ENDPOINT}"
+    api_version: "${AZURE_OPENAI_API_VERSION}"
     auth_method: azure_managed_identity
     retry:
       type: exponential_backoff
@@ -21,10 +21,10 @@ completion_models:
 embedding_models:
   default_embedding_model:
     model_provider: azure
-    model: ${GRAPHRAG_EMBEDDING_MODEL}
-    azure_deployment_name: ${GRAPHRAG_EMBEDDING_DEPLOYMENT}
-    api_base: ${AZURE_OPENAI_ENDPOINT}
-    api_version: ${AZURE_OPENAI_API_VERSION}
+    model: "${GRAPHRAG_EMBEDDING_MODEL}"
+    azure_deployment_name: "${GRAPHRAG_EMBEDDING_DEPLOYMENT}"
+    api_base: "${AZURE_OPENAI_ENDPOINT}"
+    api_version: "${AZURE_OPENAI_API_VERSION}"
     auth_method: azure_managed_identity
     retry:
       type: exponential_backoff

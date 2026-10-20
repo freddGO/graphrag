@@ -12,7 +12,7 @@ JOB="$(output jobName)"
 API_URL="$(output apiUrl)"
 
 EXECUTION="$(az containerapp job start -g "$RG" -n "$JOB" --query name -o tsv)"
-echo "started $EXECUTION (logs: az containerapp job logs show -g $RG -n $JOB --execution $EXECUTION --container indexer)"
+echo "started $EXECUTION (logs: ./scripts/logs.sh $EXECUTION)"
 
 while :; do
   STATUS="$(az containerapp job execution show -g "$RG" -n "$JOB" --job-execution-name "$EXECUTION" --query properties.status -o tsv)"
