@@ -11,7 +11,14 @@ cd "$(dirname "$0")/.."
 
 RG="${RG:-rg-graphrag}"
 LOCATION="${LOCATION:-eastus2}"
+export MSYS_NO_PATHCONV=1  # Git Bash: don't rewrite /subscriptions/... into Windows paths
 az config set extension.use_dynamic_install=yes_without_prompt -o none 2>/dev/null  # containerapp extension
+
+echo "==> 0/4 registering resource providers (first run on a new subscription takes a minute)"
+for ns in Microsoft.App Microsoft.CognitiveServices Microsoft.ContainerRegistry \
+          Microsoft.OperationalInsights Microsoft.Storage Microsoft.ManagedIdentity; do
+  az provider register -n "$ns" --wait -o none
+done
 
 touch .deploy.env
 # shellcheck disable=SC1091
