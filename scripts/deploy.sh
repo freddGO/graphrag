@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 RG="${RG:-rg-graphrag}"
 LOCATION="${LOCATION:-eastus2}"
 export MSYS_NO_PATHCONV=1  # Git Bash: don't rewrite /subscriptions/... into Windows paths
+export PYTHONIOENCODING=utf-8  # Windows az CLI crashes printing pip's progress bars from acr build logs
 az config set extension.use_dynamic_install=yes_without_prompt -o none 2>/dev/null  # containerapp extension
 
 echo "==> 0/4 registering resource providers (first run on a new subscription takes a minute)"
