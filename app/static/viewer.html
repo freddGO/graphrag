@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GraphRAG Graph Viewer</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e8ee;
+    --muted: #8b93a7; --accent: #6ea8fe; --input: #0f1115;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  #app { display: flex; height: 100%; }
+  #side { width: 320px; flex: none; overflow-y: auto; background: var(--panel);
+    border-right: 1px solid var(--border); padding: 12px 14px; }
+  #stage { position: relative; flex: 1; min-width: 0; }
+  #sigma { position: absolute; inset: 0; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    margin: 16px 0 6px; }
+  label { display: block; margin: 6px 0 2px; color: var(--muted); }
+  input, select, button { font: inherit; color: var(--text); background: var(--input);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+  input[type=text], input[type=password], select { width: 100%; }
+  input[type=range] { width: 100%; padding: 0; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); }
+  .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .row > * { flex: 1; }
+  .check { display: flex; gap: 6px; align-items: center; margin: 4px 0; color: var(--text); }
+  .check input { width: auto; }
+  #status { color: var(--muted); margin-top: 8px; min-height: 1.4em; white-space: pre-wrap; }
+  #status.err { color: #ff8a8a; }
+  #legend div { display: flex; align-items: center; gap: 6px; margin: 2px 0; cursor: pointer; }
+  #legend span.sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  #legend .n { color: var(--muted); margin-left: auto; }
+  #details { word-break: break-word; }
+  #details .k { color: var(--muted); }
+  #details .nb { color: var(--accent); cursor: pointer; }
+  #details p { margin: 4px 0; }
+  .stats { color: var(--muted); }
+  #help { position: absolute; right: 10px; bottom: 8px; color: var(--muted); font-size: 11px;
+    background: rgba(15,17,21,.7); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
+  @media (max-width: 700px) {
+    #app { flex-direction: column; }
+    #side { width: 100%; height: 45%; border-right: 0; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <h1>GraphRAG Graph Viewer</h1>
+
+    <h2>Load</h2>
+    <label for="key">API key (X-API-Key)</label>
+    <input id="key" type="password" autocomplete="off" placeholder="from .deploy.env">
+    <div class="row"><button id="loadApi" class="primary">Load from API</button></div>
+    <label for="file">…or open a local .graphml file</label>
+    <input id="file" type="file" accept=".graphml,.xml">
+    <div id="status"></div>
+
+    <h2>Layout</h2>
+    <div class="row">
+      <button id="fa2">Run ForceAtlas2</button>
+      <button id="noverlap">No overlap</button>
+    </div>
+    <div class="row"><button id="randomize">Randomize</button><button id="fit">Fit view</button></div>
+
+    <h2>Appearance</h2>
+    <label for="colorBy">Color by</label>
+    <select id="colorBy"></select>
+    <label for="sizeBy">Size by</label>
+    <select id="sizeBy"><option value="degree">degree</option><option value="weighted">weighted degree</option><option value="none">uniform</option></select>
+    <label class="check"><input id="labels" type="checkbox" checked> Show labels</label>
+    <label class="check"><input id="edgesOn" type="checkbox" checked> Show edges</label>
+
+    <h2>Filter</h2>
+    <label for="minDeg">Min degree: <b id="minDegV">0</b></label>
+    <input id="minDeg" type="range" min="0" max="10" value="0">
+    <label for="minW">Min edge weight: <b id="minWV">0</b></label>
+    <input id="minW" type="range" min="0" max="10" step="any" value="0">
+    <label for="search">Find node</label>
+    <input id="search" type="text" list="names" placeholder="type a name…">
+    <datalist id="names"></datalist>
+
+    <h2>Legend</h2>
+    <div id="legend" class="stats">load a graph</div>
+
+    <h2>Selection</h2>
+    <div id="details" class="stats">click a node</div>
+  </aside>
+  <main id="stage">
+    <div id="sigma"></div>
+    <div id="help">drag to pan · scroll to zoom · hover to highlight · click for details</div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/graphology@0.25.4/dist/graphology.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sigma@2.4.0/build/sigma.min.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const lib = window.graphologyLibrary;
+const PALETTE = ["#6ea8fe","#f6a35c","#7bd389","#e57373","#b39ddb","#4dd0e1","#ffd54f","#f48fb1",
+                 "#a1887f","#90a4ae","#aed581","#ff8a65","#9fa8da","#80cbc4","#ce93d8","#fff176"];
+
+let graph = null, renderer = null, hovered = null, selected = null, fa2Timer = null;
+const groups = new Map();  // group value -> color, for the legend
+const hiddenGroups = new Set();
+
+function status(msg, err) { const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+try { $("key").value = sessionStorage.getItem("graphrag-key") || ""; } catch (_) {}
+
+// ---- GraphML -> graphology (undirected; reverse duplicates merged, weights summed) ----
+function parseGraphML(text) {
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("not valid XML");
+  const keys = {};
+  for (const k of doc.getElementsByTagName("key")) {
+    keys[k.getAttribute("id")] = { name: k.getAttribute("attr.name") || k.getAttribute("id"),
+                                    type: k.getAttribute("attr.type") || "string" };
+  }
+  const cast = (key, v) => {
+    const t = keys[key] ? keys[key].type : "string";
+    if (["int","long","float","double"].includes(t)) return Number(v);
+    if (t === "boolean") return v === "true";
+    return v;
+  };
+  const readData = (el) => {
+    const out = {};
+    for (const d of el.children) if (d.tagName === "data") {
+      const k = d.getAttribute("key"); out[keys[k] ? keys[k].name : k] = cast(k, d.textContent);
+    }
+    return out;
+  };
+  const g = new graphology.UndirectedGraph();
+  for (const n of doc.getElementsByTagName("node")) g.mergeNode(n.getAttribute("id"), { attrs: readData(n) });
+  let merged = 0;
+  for (const e of doc.getElementsByTagName("edge")) {
+    const s = e.getAttribute("source"), t = e.getAttribute("target");
+    if (s === t) continue;
+    const a = readData(e), w = Number(a.weight ?? 1) || 1;
+    g.mergeNode(s); g.mergeNode(t);
+    if (g.hasEdge(s, t)) { g.updateEdgeAttribute(s, t, "weight", (x) => x + w); merged++; }
+    else g.addEdge(s, t, { weight: w, attrs: a });
+  }
+  return { g, merged };
+}
+
+// ---- GraphRAG tables (entities + communities) enrich the bare GraphML nodes ----
+async function enrichFromApi(g, key) {
+  const get = (name) => fetch(`tables/${name}?limit=100000`, { headers: { "X-API-Key": key } })
+    .then((r) => r.ok ? r.json() : Promise.reject(new Error(`${name}: HTTP ${r.status}`)));
+  const [entities, communities] = await Promise.all([get("entities"), get("communities")]);
+  const byId = new Map();
+  for (const e of entities) {
+    byId.set(e.id, e.title);
+    if (!g.hasNode(e.title)) g.addNode(e.title, { attrs: {} });  // isolated entities aren't in the edge list
+    Object.assign(g.getNodeAttribute(e.title, "attrs"),
+      { type: e.type, description: e.description, frequency: e.frequency });
+  }
+  const levels = new Set();
+  for (const c of communities) {
+    levels.add(c.level);
+    for (const id of c.entity_ids || []) {
+      const title = byId.get(id);
+      if (title && g.hasNode(title)) g.getNodeAttribute(title, "attrs")[`community L${c.level}`] = `${c.community}: ${c.title}`;
+    }
+  }
+  return [...levels].sort((a, b) => a - b);
+}
+
+// ---- styling ----
+function colorOptions() {
+  const keys = new Set(["louvain (computed)"]);
+  graph.forEachNode((_, a) => Object.keys(a.attrs || {}).forEach((k) => {
+    if (!["description","frequency","degree","x","y","label"].includes(k)) keys.add(k);
+  }));
+  const sel = $("colorBy"), prev = sel.value;
+  sel.innerHTML = "";
+  // Prefer GraphRAG's own communities, then entity type, then Louvain.
+  const ordered = [...keys].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  function rank(k) { return k.startsWith("community") ? 0 : k === "type" ? 1 : k.startsWith("louvain") ? 2 : 3; }
+  for (const k of ordered) sel.add(new Option(k, k));
+  if (ordered.includes(prev)) sel.value = prev;
+}
+
+function applyColors() {
+  const by = $("colorBy").value;
+  if (by === "louvain (computed)" && !graph.someNode((_, a) => a.louvain !== undefined)) {
+    lib.communitiesLouvain.assign(graph, { nodeCommunityAttribute: "louvain", getEdgeWeight: "weight" });
+  }
+  const value = (a) => by === "louvain (computed)" ? `community ${a.louvain}` : (a.attrs || {})[by] ?? "(none)";
+  const counts = new Map();
+  graph.forEachNode((_, a) => { const v = String(value(a)); counts.set(v, (counts.get(v) || 0) + 1); });
+  groups.clear(); hiddenGroups.clear();
+  [...counts.entries()].sort((a, b) => b[1] - a[1])
+    .forEach(([v], i) => groups.set(v, v === "(none)" ? "#5c6370" : PALETTE[i % PALETTE.length]));
+  graph.forEachNode((n, a) => { const v = String(value(a)); graph.mergeNodeAttributes(n, { group: v, color: groups.get(v) }); });
+  const legend = $("legend");
+  legend.innerHTML = "";
+  for (const [v, c] of groups) {
+    const row = document.createElement("div");
+    row.innerHTML = `<span class="sw" style="background:${c}"></span><span>${escapeHtml(v)}</span><span class="n">${counts.get(v)}</span>`;
+    row.title = "click to hide/show";
+    row.onclick = () => { hiddenGroups.has(v) ? hiddenGroups.delete(v) : hiddenGroups.add(v);
+      row.style.opacity = hiddenGroups.has(v) ? .35 : 1; refresh(); };
+    legend.appendChild(row);
+  }
+  refresh();
+}
+
+function applySizes() {
+  const by = $("sizeBy").value;
+  const metric = (n) => by === "none" ? 1 : by === "weighted"
+    ? graph.reduceEdges(n, (s, _e, a) => s + a.weight, 0) : graph.degree(n);
+  let max = 1; graph.forEachNode((n) => { max = Math.max(max, metric(n)); });
+  graph.forEachNode((n) => graph.setNodeAttribute(n, "size", by === "none" ? 6 : 3 + 17 * Math.sqrt(metric(n) / max)));
+  let maxW = 1; graph.forEachEdge((_e, a) => { maxW = Math.max(maxW, a.weight); });
+  graph.forEachEdge((e, a) => graph.setEdgeAttribute(e, "size", 0.5 + 3.5 * a.weight / maxW));
+  refresh();
+}
+
+function visibleNode(n, a) {
+  return !hiddenGroups.has(a.group) && graph.degree(n) >= Number($("minDeg").value);
+}
+
+function refresh() { if (renderer) renderer.refresh(); }
+
+function mountRenderer() {
+  if (renderer) renderer.kill();
+  renderer = new Sigma(graph, $("sigma"), {
+    renderLabels: $("labels").checked,
+    renderEdgeLabels: false,
+    labelColor: { color: "#e6e8ee" },
+    labelDensity: 0.7,
+    labelRenderedSizeThreshold: 6,
+    defaultEdgeColor: "#3a4150",
+    zIndex: true,
+    nodeReducer(n, a) {
+      const r = { ...a };
+      if (!visibleNode(n, a)) { r.hidden = true; return r; }
+      const focus = hovered || selected;
+      if (focus && focus !== n && !graph.areNeighbors(focus, n)) { r.color = "#2a2f3a"; r.label = ""; r.zIndex = 0; }
+      else if (focus) { r.zIndex = 1; r.forceLabel = true; }
+      if (n === selected) r.highlighted = true;
+      return r;
+    },
+    edgeReducer(e, a) {
+      const r = { ...a };
+      const [s, t] = graph.extremities(e);
+      if (!$("edgesOn").checked || a.weight < Number($("minW").value)
+          || !visibleNode(s, graph.getNodeAttributes(s)) || !visibleNode(t, graph.getNodeAttributes(t))) { r.hidden = true; return r; }
+      const focus = hovered || selected;
+      if (focus) { if (s === focus || t === focus) { r.color = "#9aa4b8"; r.zIndex = 1; } else r.hidden = true; }
+      return r;
+    },
+  });
+  renderer.on("enterNode", ({ node }) => { hovered = node; refresh(); });
+  renderer.on("leaveNode", () => { hovered = null; refresh(); });
+  renderer.on("clickNode", ({ node }) => select(node));
+  renderer.on("clickStage", () => select(null));
+}
+
+function select(n) {
+  selected = n;
+  const box = $("details");
+  if (!n) { box.innerHTML = "click a node"; box.className = "stats"; refresh(); return; }
+  box.className = "";
+  const a = graph.getNodeAttributes(n), attrs = a.attrs || {};
+  const nbs = graph.mapEdges(n, (_e, ea, s, t) => [s === n ? t : s, ea.weight]).sort((x, y) => y[1] - x[1]);
+  box.innerHTML = `<p><b>${escapeHtml(n)}</b></p>`
+    + `<p><span class="k">degree</span> ${graph.degree(n)} · <span class="k">group</span> ${escapeHtml(a.group)}</p>`
+    + Object.entries(attrs).filter(([k]) => k !== "description").map(([k, v]) => `<p><span class="k">${escapeHtml(k)}</span> ${escapeHtml(v)}</p>`).join("")
+    + (attrs.description ? `<p>${escapeHtml(attrs.description)}</p>` : "")
+    + `<p class="k">neighbors (edge weight)</p>`
+    + nbs.map(([m, w]) => `<p><span class="nb" data-n="${escapeHtml(m)}">${escapeHtml(m)}</span> <span class="k">${+w.toFixed(2)}</span></p>`).join("");
+  box.querySelectorAll(".nb").forEach((el) => el.onclick = () => focusNode(el.dataset.n));
+  refresh();
+}
+
+function focusNode(n) {
+  if (!graph.hasNode(n)) return;
+  select(n);
+  const pos = renderer.getNodeDisplayData(n);
+  renderer.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.3 }, { duration: 500 });
+}
+
+// ---- layout ----
+function randomize() {
+  graph.forEachNode((n) => graph.mergeNodeAttributes(n, { x: Math.random() * 100, y: Math.random() * 100 }));
+}
+
+function toggleFA2(forceStop) {
+  if (fa2Timer || forceStop) { cancelAnimationFrame(fa2Timer); fa2Timer = null; $("fa2").textContent = "Run ForceAtlas2"; return; }
+  const settings = { ...lib.layoutForceAtlas2.inferSettings(graph), edgeWeightInfluence: 1, barnesHutOptimize: graph.order > 500 };
+  let frames = 0;
+  const step = () => {
+    lib.layoutForceAtlas2.assign(graph, { iterations: graph.order > 1000 ? 2 : 5, settings, getEdgeWeight: "weight" });
+    if (++frames > 600) return toggleFA2(true);  // ~10 s, then stop on its own
+    fa2Timer = requestAnimationFrame(step);
+  };
+  $("fa2").textContent = "Stop ForceAtlas2";
+  fa2Timer = requestAnimationFrame(step);
+}
+
+// ---- loading ----
+async function show(g, note) {
+  toggleFA2(true);
+  graph = g; selected = hovered = null;
+  graph.forEachNode((n) => graph.setNodeAttribute(n, "label", n));
+  randomize();
+  lib.layoutForceAtlas2.assign(graph, { iterations: 200, settings: lib.layoutForceAtlas2.inferSettings(graph), getEdgeWeight: "weight" });
+  let maxDeg = 0, maxW = 0;
+  graph.forEachNode((n) => { maxDeg = Math.max(maxDeg, graph.degree(n)); });
+  graph.forEachEdge((_e, a) => { maxW = Math.max(maxW, a.weight); });
+  $("minDeg").max = maxDeg; $("minDeg").value = 0; $("minDegV").textContent = 0;
+  $("minW").max = maxW; $("minW").value = 0; $("minWV").textContent = 0;
+  $("names").innerHTML = graph.mapNodes((n) => `<option value="${escapeHtml(n)}">`).join("");
+  colorOptions();
+  mountRenderer();
+  applySizes();
+  applyColors();
+  select(null);
+  status(`${graph.order} nodes, ${graph.size} edges${note ? "\n" + note : ""}`);
+}
+
+$("loadApi").onclick = async () => {
+  const key = $("key").value.trim();
+  if (!key) return status("enter the API key first", true);
+  try { sessionStorage.setItem("graphrag-key", key); } catch (_) {}
+  status("downloading graph.graphml…");
+  try {
+    const r = await fetch("graphml", { headers: { "X-API-Key": key } });
+    if (!r.ok) throw new Error(`graphml: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+    const { g, merged } = parseGraphML(await r.text());
+    status("enriching with entities + communities…");
+    const levels = await enrichFromApi(g, key);
+    await show(g, `${merged} reverse-duplicate edges merged · community levels: ${levels.join(", ") || "none"}`);
+  } catch (err) { status(String(err.message || err), true); }
+};
+
+$("file").onchange = async (ev) => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  try {
+    const { g, merged } = parseGraphML(await f.text());
+    await show(g, `${merged} reverse-duplicate edges merged · bare GraphML: color by Louvain`);
+  } catch (err) { status(String(err.message || err), true); }
+};
+
+$("fa2").onclick = () => graph && toggleFA2();
+$("noverlap").onclick = () => { if (!graph) return; lib.layoutNoverlap.assign(graph, { maxIterations: 200, settings: { ratio: 1.2, margin: 4 } }); };
+$("randomize").onclick = () => { if (!graph) return; randomize(); };
+$("fit").onclick = () => renderer && renderer.getCamera().animatedReset();
+$("colorBy").onchange = () => graph && applyColors();
+$("sizeBy").onchange = () => graph && applySizes();
+$("labels").onchange = () => renderer && renderer.setSetting("renderLabels", $("labels").checked);
+$("edgesOn").onchange = refresh;
+$("minDeg").oninput = () => { $("minDegV").textContent = $("minDeg").value; refresh(); };
+$("minW").oninput = () => { $("minWV").textContent = (+$("minW").value).toFixed(1); refresh(); };
+$("search").onchange = () => graph && focusNode($("search").value);
+</script>
+</body>
+</html>

@@ -4,8 +4,10 @@
     POST /query         -> {"query": "...", "method": "local|global|drift|basic"}
     POST /reload        -> re-download the index after a re-index
     GET  /tables/{name} -> an index table as JSON (for scripts/inspect.py)
+    GET  /graphml       -> the graph snapshot (snapshots.graphml in settings.yaml)
+    GET  /              -> a Gephi-style graph viewer (app/static/viewer.html)
 
-Every endpoint except /health requires the `X-API-Key` header, so strangers
+Every endpoint except /health and the viewer page requires the `X-API-Key` header, so strangers
 can't spend your Azure OpenAI tokens.
 """
 import asyncio
@@ -18,6 +20,7 @@ from typing import Literal
 
 import graphrag.api as api
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi.responses import FileResponse
 from graphrag.config.load_config import load_config
 from graphrag.data_model.data_reader import DataReader
 from graphrag_storage import create_storage
@@ -130,3 +133,18 @@ def table(name: Literal["entities", "relationships", "communities", "community_r
 async def reload():
     await load_index()
     return health()
+
+
+@app.get("/graphml", dependencies=[Depends(require_key)])
+def graphml():
+    """The GraphML snapshot that `graphrag index` writes when snapshots.graphml is true."""
+    files = sorted((ROOT / "output").glob("*.graphml"))
+    if not files:
+        raise HTTPException(status_code=404, detail="no .graphml in output/ (set snapshots.graphml: true and re-index)")
+    return FileResponse(files[0], media_type="application/xml", filename=files[0].name)
+
+
+@app.get("/", include_in_schema=False)
+def viewer():
+    """Static page; it asks for the API key and fetches /graphml and /tables itself."""
+    return FileResponse(Path(__file__).parent / "static" / "viewer.html", media_type="text/html")

@@ -5,3 +5,6 @@ project/cache/
 project/logs/
 .env
 .deploy.env
+
+# Copyrighted source text: indexed in Azure, never published in this public repo.
+project/input/the_naked_sun.txt

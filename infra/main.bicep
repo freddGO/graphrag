@@ -24,12 +24,12 @@ param chatModel string = 'gpt-4.1-mini'
 param chatModelVersion string = '2025-04-14'
 param chatSku string = 'GlobalStandard'
 @description('Chat capacity in thousands of tokens per minute.')
-param chatCapacity int = 50
+param chatCapacity int = 200
 
 param embeddingModel string = 'text-embedding-3-small'
 param embeddingModelVersion string = '1'
 param embeddingSku string = 'GlobalStandard'
-param embeddingCapacity int = 50
+param embeddingCapacity int = 200
 
 param openAiApiVersion string = '2024-10-21'
 
